@@ -298,3 +298,9 @@ h2 {
     border-radius: 1.1rem;
   }
 }
+
+
+button.sound-ready {
+  background: #38bdf8;
+  color: #082f49;
+}

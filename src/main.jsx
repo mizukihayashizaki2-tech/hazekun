@@ -44,7 +44,8 @@ function App() {
   const [goalieIndex, setGoalieIndex] = useState(0);
   const [logs, setLogs] = useState([]);
   const [status, setStatus] = useState("idle"); // idle | running | paused | finished
-  const [audioStatus, setAudioStatus] = useState("音声未確認");
+  const [audioStatus, setAudioStatus] = useState("音声未準備: 試合前に「音声準備」を押してください");
+  const [audioReady, setAudioReady] = useState(false);
   const [wakeLockStatus, setWakeLockStatus] = useState("画面スリープ対策: 未使用");
 
   const startedAtRef = useRef(null);
@@ -175,28 +176,55 @@ function App() {
     }
   }
 
-  async function unlockAudio() {
+  function prepareAudioForIOS() {
     if (!audioMapRef.current) {
       audioMapRef.current = createAudioMap();
     }
 
-    try {
-      const audio = audioMapRef.current.start;
-      audio.muted = true;
-      await audio.play();
-      audio.pause();
-      audio.currentTime = 0;
-      audio.muted = false;
-      setAudioStatus("音声準備OK");
-    } catch (error) {
-      console.warn("音声の事前許可に失敗しました:", error);
-      setAudioStatus("音声準備未完了: テスト再生してください");
-    }
+    const sampleMember = members[(goalieIndex + 1) % members.length] ?? "メンバー";
+
+    setAudioStatus("音声準備中: 読み上げと交代音声を再生します");
+
+    // iPhoneでは、タイマーなどの非ユーザー操作からの初回音声再生が失敗しやすいため、
+    // ユーザーが押した「音声準備」ボタンの操作内で、実際に読み上げとchange.mp3を一度鳴らす。
+    speakMemberName(sampleMember, () => {
+      const audio = audioMapRef.current?.change;
+      if (!audio) {
+        setAudioReady(false);
+        setAudioStatus("音声準備失敗: change.mp3 が見つかりません");
+        return;
+      }
+
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        const playPromise = audio.play();
+
+        if (playPromise && typeof playPromise.then === "function") {
+          playPromise
+            .then(() => {
+              setAudioReady(true);
+              setAudioStatus("音声準備OK: 試合開始できます");
+            })
+            .catch((error) => {
+              console.warn("音声準備に失敗しました:", error);
+              setAudioReady(false);
+              setAudioStatus("音声準備失敗: もう一度「音声準備」を押してください");
+            });
+        } else {
+          setAudioReady(true);
+          setAudioStatus("音声準備OK: 試合開始できます");
+        }
+      } catch (error) {
+        console.warn("音声準備に失敗しました:", error);
+        setAudioReady(false);
+        setAudioStatus("音声準備失敗: もう一度「音声準備」を押してください");
+      }
+    });
   }
 
-  async function testAudio() {
-    await unlockAudio();
-    playChangeAnnouncement(members[(goalieIndex + 1) % members.length]);
+  function testAudio() {
+    prepareAudioForIOS();
   }
 
   async function requestWakeLock() {
@@ -302,7 +330,11 @@ function App() {
   }, [goalieIndex]);
 
   async function startTimer() {
-    await unlockAudio();
+    if (!audioReady) {
+      setAudioStatus("試合開始前に「音声準備」を押してください");
+      return;
+    }
+
     await requestWakeLock();
 
     if (status === "finished") {
@@ -433,7 +465,7 @@ function App() {
 
         <div className="action-grid">
           {status !== "running" ? (
-            <button className="primary" onClick={startTimer}>
+            <button className="primary" onClick={startTimer} disabled={!audioReady}>
               {status === "paused" ? "再開" : "試合開始"}
             </button>
           ) : (
@@ -443,13 +475,13 @@ function App() {
             手動交代
           </button>
           <button onClick={resetTimer}>リセット</button>
-          <button onClick={testAudio}>音声テスト</button>
+          <button className="sound-ready" onClick={testAudio}>音声準備</button>
         </div>
 
         <div className="notice">
           <div>{audioStatus}</div>
           <div>{wakeLockStatus}</div>
-          <div>スマホの音量、マナーモード、Bluetoothスピーカー接続を試合前に確認してください。</div>
+          <div>iPhoneでは試合開始前に必ず「音声準備」を押してください。音量、マナーモード、Bluetoothスピーカー接続も確認してください。</div>
         </div>
       </section>
 
