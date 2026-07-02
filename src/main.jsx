@@ -9,7 +9,7 @@ const AUDIO_FILES = {
   finish: "/audio/finish.mp3",
 };
 
-const DEFAULT_MEMBERS = ["メンバー1", "メンバー2", "メンバー3", "メンバー4", "メンバー5"];
+const DEFAULT_MEMBERS = ["くまちゃん", "あっきー", "ざきさん", "うっち～", "エド"];
 
 function formatTime(totalSeconds) {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds));
@@ -107,6 +107,55 @@ function App() {
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, [status]);
 
+
+  function speakMemberName(memberName, onEnd) {
+    if (!memberName || !memberName.trim()) {
+      onEnd?.();
+      return;
+    }
+
+    if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+      onEnd?.();
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(`次は、${memberName}`);
+      utterance.lang = "ja-JP";
+      utterance.rate = 1.05;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+
+      let completed = false;
+      const finish = () => {
+        if (completed) {
+          return;
+        }
+        completed = true;
+        onEnd?.();
+      };
+
+      utterance.onend = finish;
+      utterance.onerror = finish;
+
+      // 一部ブラウザで onend が返らない場合の保険
+      window.setTimeout(finish, 1800);
+
+      window.speechSynthesis.speak(utterance);
+    } catch (error) {
+      console.warn("読み上げに失敗しました:", error);
+      onEnd?.();
+    }
+  }
+
+  function playChangeAnnouncement(memberName) {
+    speakMemberName(memberName, () => {
+      playAudio("change");
+    });
+  }
+
   function playAudio(key) {
     const audio = audioMapRef.current?.[key];
     if (!audio) {
@@ -147,7 +196,7 @@ function App() {
 
   async function testAudio() {
     await unlockAudio();
-    playAudio("change");
+    playChangeAnnouncement(members[(goalieIndex + 1) % members.length]);
   }
 
   async function requestWakeLock() {
@@ -222,7 +271,7 @@ function App() {
       const from = members[goalieIndexRef.current % members.length];
       const to = members[(goalieIndexRef.current + 1) % members.length];
 
-      playAudio("change");
+      playChangeAnnouncement(to);
       setGoalieIndex((current) => {
         const nextIndex = (current + 1) % members.length;
         goalieIndexRef.current = nextIndex;
@@ -333,7 +382,7 @@ function App() {
       goalieIndexRef.current = nextIndex;
       return nextIndex;
     });
-    playAudio("change");
+    playChangeAnnouncement(to);
     addLog(`手動交代: ${from} → ${to}`, elapsedSeconds);
 
     if (status === "running" || status === "paused") {
@@ -354,7 +403,7 @@ function App() {
       <header className="hero">
         <div>
           <p className="eyebrow">しゃべる交代タイマー</p>
-          <h1>はぜくん</h1>
+          <h1>はぜくん2号</h1>
           <p className="lead">ゴレイロ交代のタイミングを、音声と大きな画面表示でサポートします。</p>
         </div>
         <div className={`status status-${status}`}>{statusLabel}</div>
