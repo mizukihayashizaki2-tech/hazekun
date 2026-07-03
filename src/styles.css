@@ -304,3 +304,273 @@ button.sound-ready {
   background: #38bdf8;
   color: #082f49;
 }
+
+/* はぜくん3号: 作戦ボード */
+.view-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.view-tabs button {
+  background: rgba(31, 41, 55, 0.92);
+  color: #e5e7eb;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.view-tabs button.tab-active {
+  background: #22c55e;
+  color: #052e16;
+  border-color: transparent;
+}
+
+.strategy-layout {
+  display: grid;
+  gap: 1rem;
+}
+
+.board-info {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.board-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.futsal-board {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  min-height: 360px;
+  border: 0.35rem solid rgba(226, 232, 240, 0.84);
+  border-radius: 1.4rem;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(34, 197, 94, 0.18) 0,
+      rgba(34, 197, 94, 0.18) 5%,
+      rgba(21, 128, 61, 0.18) 5%,
+      rgba(21, 128, 61, 0.18) 10%
+    ),
+    linear-gradient(135deg, #15803d, #166534);
+  box-shadow: inset 0 0 2rem rgba(0, 0, 0, 0.32), 0 1.2rem 2.5rem rgba(0, 0, 0, 0.25);
+  touch-action: none;
+  user-select: none;
+}
+
+.court-line {
+  position: absolute;
+  pointer-events: none;
+  border-color: rgba(248, 250, 252, 0.88);
+}
+
+.court-outline {
+  inset: 2.4%;
+  border: 0.18rem solid rgba(248, 250, 252, 0.88);
+  border-radius: 0.8rem;
+}
+
+.center-line {
+  top: 2.4%;
+  bottom: 2.4%;
+  left: 50%;
+  width: 0;
+  border-left: 0.15rem solid rgba(248, 250, 252, 0.82);
+}
+
+.center-circle {
+  width: 17%;
+  aspect-ratio: 1 / 1;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border: 0.15rem solid rgba(248, 250, 252, 0.82);
+  border-radius: 999px;
+}
+
+.left-area,
+.right-area {
+  top: 31%;
+  width: 14%;
+  height: 38%;
+  border: 0.15rem solid rgba(248, 250, 252, 0.82);
+}
+
+.left-area {
+  left: 2.4%;
+  border-left: 0;
+  border-radius: 0 999px 999px 0;
+}
+
+.right-area {
+  right: 2.4%;
+  border-right: 0;
+  border-radius: 999px 0 0 999px;
+}
+
+.left-goal,
+.right-goal {
+  top: 42%;
+  width: 2.4%;
+  height: 16%;
+  border: 0.15rem solid rgba(248, 250, 252, 0.82);
+  background: rgba(15, 23, 42, 0.24);
+}
+
+.left-goal {
+  left: 0;
+  border-left: 0;
+}
+
+.right-goal {
+  right: 0;
+  border-right: 0;
+}
+
+.court-label {
+  position: absolute;
+  top: 4%;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.85rem;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.court-label-left {
+  left: 5%;
+}
+
+.court-label-right {
+  right: 5%;
+}
+
+.board-piece {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: clamp(3.2rem, 8vw, 4.6rem);
+  height: clamp(3.2rem, 8vw, 4.6rem);
+  min-height: auto;
+  padding: 0.25rem;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.32);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.board-piece:active {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.04);
+}
+
+.board-piece span {
+  display: block;
+  max-width: 96%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  line-height: 1.08;
+  font-size: clamp(0.68rem, 2vw, 0.92rem);
+  font-weight: 1000;
+  white-space: normal;
+}
+
+.piece-own {
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  background: #020617;
+  color: #f9fafb;
+}
+
+.piece-opponent {
+  border: 2px solid rgba(2, 6, 23, 0.72);
+  background: #f8fafc;
+  color: #020617;
+}
+
+.piece-ball {
+  width: clamp(2.6rem, 6vw, 3.4rem);
+  height: clamp(2.6rem, 6vw, 3.4rem);
+  border: 2px solid rgba(2, 6, 23, 0.68);
+  background: #facc15;
+  color: #111827;
+}
+
+.piece-ball span {
+  font-size: clamp(1.2rem, 3vw, 1.8rem);
+}
+
+.board-roster {
+  margin-bottom: 1rem;
+}
+
+.roster-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.2rem;
+}
+
+.roster-grid ul {
+  margin: 0.7rem 0 0;
+  padding-left: 1.2rem;
+  color: #e5e7eb;
+  line-height: 1.7;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.5rem;
+  border-radius: 999px;
+  vertical-align: -0.15rem;
+}
+
+.own-dot {
+  background: #020617;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.opponent-dot {
+  background: #f8fafc;
+  border: 1px solid rgba(2, 6, 23, 0.8);
+}
+
+@media (max-width: 760px) {
+  .board-info {
+    flex-direction: column;
+  }
+
+  .roster-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .board-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .board-actions button {
+    flex: 1 1 9rem;
+  }
+
+  .futsal-board {
+    min-height: 520px;
+    aspect-ratio: 10 / 14;
+  }
+
+  .board-piece {
+    width: 3.4rem;
+    height: 3.4rem;
+  }
+}

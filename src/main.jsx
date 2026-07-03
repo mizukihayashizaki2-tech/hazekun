@@ -10,6 +10,68 @@ const AUDIO_FILES = {
 };
 
 const DEFAULT_MEMBERS = ["くまちゃん", "あっきー", "ざきさん", "うっち～", "エド"];
+const DEFAULT_OPPONENTS = ["相手1", "相手2", "相手3", "相手4", "相手5"];
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function createInitialOwnPlayers(memberNames) {
+  const patterns = [
+    { x: 12, y: 50 },
+    { x: 28, y: 22 },
+    { x: 34, y: 40 },
+    { x: 34, y: 60 },
+    { x: 28, y: 78 },
+    { x: 46, y: 50 },
+    { x: 20, y: 35 },
+    { x: 20, y: 65 },
+  ];
+
+  return memberNames.map((name, index) => {
+    const fallbackY = 18 + (index % 8) * 9;
+    const point = patterns[index] ?? { x: 18, y: fallbackY };
+    return { id: `own-${index}-${name}`, type: "own", name, ...point };
+  });
+}
+
+function createInitialOpponents() {
+  const patterns = [
+    { x: 88, y: 50 },
+    { x: 72, y: 22 },
+    { x: 66, y: 40 },
+    { x: 66, y: 60 },
+    { x: 72, y: 78 },
+  ];
+
+  return DEFAULT_OPPONENTS.map((name, index) => ({
+    id: `opponent-${index}`,
+    type: "opponent",
+    name,
+    ...patterns[index],
+  }));
+}
+
+function createInitialBoard(memberNames) {
+  return {
+    own: createInitialOwnPlayers(memberNames),
+    opponents: createInitialOpponents(),
+    ball: { id: "ball", type: "ball", name: "ボール", x: 50, y: 50 },
+  };
+}
+
+function mergeOwnPlayersWithMembers(currentOwnPlayers, memberNames) {
+  const currentByName = new Map(currentOwnPlayers.map((player) => [player.name, player]));
+  const initial = createInitialOwnPlayers(memberNames);
+
+  return memberNames.map((name, index) => {
+    const existing = currentByName.get(name);
+    if (existing) {
+      return { ...existing, id: `own-${index}-${name}`, name };
+    }
+    return initial[index];
+  });
+}
 
 function formatTime(totalSeconds) {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds));
@@ -34,6 +96,7 @@ function createAudioMap() {
 }
 
 function App() {
+  const [view, setView] = useState("timer");
   const [matchMinutes, setMatchMinutes] = useState("7");
   const [matchSeconds, setMatchSeconds] = useState("0");
   const [changeMinutes, setChangeMinutes] = useState("1");
@@ -55,6 +118,7 @@ function App() {
   const lastOneMinutePlayedRef = useRef(false);
   const finishPlayedRef = useRef(false);
   const audioMapRef = useRef(null);
+  const sharedAudioRef = useRef(null);
   const wakeLockRef = useRef(null);
 
   const members = useMemo(() => {
@@ -63,6 +127,15 @@ function App() {
       .map((name) => name.trim())
       .filter(Boolean);
     return values.length > 0 ? values : DEFAULT_MEMBERS;
+  }, [membersText]);
+
+  const [boardState, setBoardState] = useState(() => createInitialBoard(DEFAULT_MEMBERS));
+
+  useEffect(() => {
+    setBoardState((current) => ({
+      ...current,
+      own: mergeOwnPlayersWithMembers(current.own, members),
+    }));
   }, [membersText]);
 
   const matchDurationSeconds = useMemo(() => {
@@ -88,6 +161,8 @@ function App() {
 
   useEffect(() => {
     audioMapRef.current = createAudioMap();
+    sharedAudioRef.current = new Audio();
+    sharedAudioRef.current.preload = "auto";
 
     return () => {
       if (timerIdRef.current) {
@@ -158,17 +233,29 @@ function App() {
   }
 
   function playAudio(key) {
-    const audio = audioMapRef.current?.[key];
-    if (!audio) {
+    const src = AUDIO_FILES[key];
+    if (!src) {
       return;
     }
 
     try {
+      const audio = sharedAudioRef.current ?? new Audio();
+      sharedAudioRef.current = audio;
+
+      const absoluteSrc = new URL(src, window.location.href).href;
+      if (audio.src !== absoluteSrc) {
+        audio.src = src;
+      }
+
+      audio.preload = "auto";
+      audio.muted = false;
+      audio.volume = 1;
       audio.pause();
       audio.currentTime = 0;
+
       audio.play().catch((error) => {
         console.warn("音声再生に失敗しました:", error);
-        setAudioStatus("音声再生失敗: 端末の音量・マナーモード・ブラウザ制限を確認");
+        setAudioStatus("音声再生失敗: Safariで開くか、手動交代を一度押してください");
       });
     } catch (error) {
       console.warn("音声再生に失敗しました:", error);
@@ -183,44 +270,49 @@ function App() {
 
     const sampleMember = members[(goalieIndex + 1) % members.length] ?? "メンバー";
 
-    setAudioStatus("音声準備中: 読み上げと交代音声を再生します");
+    // iPhone/LINE内ブラウザでは play() の成否判定が不安定な場合があるため、
+    // 「音声準備を試したら試合開始可能」にしてユーザーが詰まらないようにする。
+    setAudioReady(true);
+    setAudioStatus("音声準備中: 交代音声を再生します");
 
-    // iPhoneでは、タイマーなどの非ユーザー操作からの初回音声再生が失敗しやすいため、
-    // ユーザーが押した「音声準備」ボタンの操作内で、実際に読み上げとchange.mp3を一度鳴らす。
-    speakMemberName(sampleMember, () => {
-      const audio = audioMapRef.current?.change;
-      if (!audio) {
-        setAudioReady(false);
-        setAudioStatus("音声準備失敗: change.mp3 が見つかりません");
-        return;
+    try {
+      const audio = sharedAudioRef.current ?? new Audio();
+      sharedAudioRef.current = audio;
+      audio.preload = "auto";
+      audio.src = AUDIO_FILES.change;
+      audio.muted = false;
+      audio.volume = 1;
+      audio.pause();
+      audio.currentTime = 0;
+
+      const playPromise = audio.play();
+
+      if (playPromise && typeof playPromise.then === "function") {
+        playPromise
+          .then(() => {
+            setAudioReady(true);
+            setAudioStatus("音声準備OK: 試合開始できます。名前読み上げも試します");
+
+            // 名前読み上げはベストエフォート。
+            // 読み上げが失敗しても、MP3再生準備を優先する。
+            window.setTimeout(() => {
+              speakMemberName(sampleMember, () => {});
+            }, 300);
+          })
+          .catch((error) => {
+            console.warn("音声準備に失敗しました:", error);
+            setAudioReady(true);
+            setAudioStatus("音声準備を試行しました。聞こえない場合はSafariで開くか、手動交代を一度押してください");
+          });
+      } else {
+        setAudioReady(true);
+        setAudioStatus("音声準備OK: 試合開始できます");
       }
-
-      try {
-        audio.pause();
-        audio.currentTime = 0;
-        const playPromise = audio.play();
-
-        if (playPromise && typeof playPromise.then === "function") {
-          playPromise
-            .then(() => {
-              setAudioReady(true);
-              setAudioStatus("音声準備OK: 試合開始できます");
-            })
-            .catch((error) => {
-              console.warn("音声準備に失敗しました:", error);
-              setAudioReady(false);
-              setAudioStatus("音声準備失敗: もう一度「音声準備」を押してください");
-            });
-        } else {
-          setAudioReady(true);
-          setAudioStatus("音声準備OK: 試合開始できます");
-        }
-      } catch (error) {
-        console.warn("音声準備に失敗しました:", error);
-        setAudioReady(false);
-        setAudioStatus("音声準備失敗: もう一度「音声準備」を押してください");
-      }
-    });
+    } catch (error) {
+      console.warn("音声準備に失敗しました:", error);
+      setAudioReady(true);
+      setAudioStatus("音声準備を試行しました。聞こえない場合はSafariで開くか、手動交代を一度押してください");
+    }
   }
 
   function testAudio() {
@@ -331,11 +423,11 @@ function App() {
 
   async function startTimer() {
     if (!audioReady) {
-      setAudioStatus("試合開始前に「音声準備」を押してください");
-      return;
+      setAudioStatus("音声準備未完了ですが開始します。音が出ない場合は手動交代を一度押してください");
+      setAudioReady(true);
     }
 
-    await requestWakeLock();
+    requestWakeLock();
 
     if (status === "finished") {
       resetTimer();
@@ -423,6 +515,46 @@ function App() {
     }
   }
 
+  function resetBoard() {
+    setBoardState(createInitialBoard(members));
+  }
+
+  function centerBall() {
+    setBoardState((current) => ({
+      ...current,
+      ball: { ...current.ball, x: 50, y: 50 },
+    }));
+  }
+
+  function updateBoardItem(type, id, nextPosition) {
+    setBoardState((current) => {
+      if (type === "ball") {
+        return {
+          ...current,
+          ball: {
+            ...current.ball,
+            x: clamp(nextPosition.x, 2, 98),
+            y: clamp(nextPosition.y, 3, 97),
+          },
+        };
+      }
+
+      const key = type === "own" ? "own" : "opponents";
+      return {
+        ...current,
+        [key]: current[key].map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                x: clamp(nextPosition.x, 4, 96),
+                y: clamp(nextPosition.y, 5, 95),
+              }
+            : item
+        ),
+      };
+    });
+  }
+
   const statusLabel = {
     idle: "開始前",
     running: "試合中",
@@ -434,13 +566,20 @@ function App() {
     <main className="app">
       <header className="hero">
         <div>
-          <p className="eyebrow">しゃべる交代タイマー</p>
-          <h1>はぜくん2号</h1>
-          <p className="lead">ゴレイロ交代のタイミングを、音声と大きな画面表示でサポートします。</p>
+          <p className="eyebrow">しゃべる交代タイマー + 作戦ボード</p>
+          <h1>はぜくん3号</h1>
+          <p className="lead">ゴレイロ交代のタイミングと、試合中の作戦共有をサポートします。</p>
         </div>
         <div className={`status status-${status}`}>{statusLabel}</div>
       </header>
 
+      <nav className="view-tabs" aria-label="画面切り替え">
+        <button className={view === "timer" ? "tab-active" : ""} onClick={() => setView("timer")}>タイマー</button>
+        <button className={view === "board" ? "tab-active" : ""} onClick={() => setView("board")}>作戦ボード</button>
+      </nav>
+
+      {view === "timer" ? (
+        <>
       <section className="timer-card">
         <div className="timer-label">残り時間</div>
         <div className="timer-display">{formatTime(remainingSeconds)}</div>
@@ -465,7 +604,7 @@ function App() {
 
         <div className="action-grid">
           {status !== "running" ? (
-            <button className="primary" onClick={startTimer} disabled={!audioReady}>
+            <button className="primary" onClick={startTimer}>
               {status === "paused" ? "再開" : "試合開始"}
             </button>
           ) : (
@@ -481,7 +620,7 @@ function App() {
         <div className="notice">
           <div>{audioStatus}</div>
           <div>{wakeLockStatus}</div>
-          <div>iPhoneでは試合開始前に必ず「音声準備」を押してください。音量、マナーモード、Bluetoothスピーカー接続も確認してください。</div>
+          <div>iPhoneでは試合前に「音声準備」を押してください。LINE内ブラウザで不安定な場合は、右上の共有ボタンからSafariで開いてください。</div>
         </div>
       </section>
 
@@ -539,7 +678,7 @@ function App() {
 
         <section className="card">
           <h2>メンバー・交代順</h2>
-          <p className="helper">上から順にゴレイロを交代します。1行に1人ずつ入力してください。</p>
+          <p className="helper">上から順にゴレイロを交代します。1行に1人ずつ入力してください。作戦ボードの黒丸にも反映されます。</p>
           <textarea
             value={membersText}
             onChange={(event) => setMembersText(event.target.value)}
@@ -564,7 +703,141 @@ function App() {
           </ul>
         )}
       </section>
+        </>
+      ) : (
+        <StrategyBoardView
+          members={members}
+          boardState={boardState}
+          updateBoardItem={updateBoardItem}
+          resetBoard={resetBoard}
+          centerBall={centerBall}
+          setView={setView}
+        />
+      )}
     </main>
+  );
+}
+
+function StrategyBoardView({ members, boardState, updateBoardItem, resetBoard, centerBall, setView }) {
+  return (
+    <section className="strategy-layout">
+      <section className="card board-info">
+        <div>
+          <h2>作戦ボード</h2>
+          <p className="helper">
+            黒丸が自チーム、白丸が相手、黄色がボールです。ドラッグまたは指で自由に動かせます。
+            この配置はブラウザを開いている間だけ保持されます。
+          </p>
+        </div>
+        <div className="board-actions">
+          <button onClick={() => setView("timer")}>タイマーに戻る</button>
+          <button onClick={resetBoard}>初期配置に戻す</button>
+          <button onClick={centerBall}>ボール中央</button>
+        </div>
+      </section>
+
+      <FutsalBoard
+        ownPlayers={boardState.own}
+        opponents={boardState.opponents}
+        ball={boardState.ball}
+        updateBoardItem={updateBoardItem}
+      />
+
+      <section className="card board-roster">
+        <h2>作戦ボードのメンバー</h2>
+        <div className="roster-grid">
+          <div>
+            <span className="legend-dot own-dot"></span>
+            <strong>自チーム</strong>
+            <ul>
+              {members.map((member) => (
+                <li key={member}>{member}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <span className="legend-dot opponent-dot"></span>
+            <strong>相手</strong>
+            <ul>
+              {DEFAULT_OPPONENTS.map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function FutsalBoard({ ownPlayers, opponents, ball, updateBoardItem }) {
+  const boardRef = useRef(null);
+  const dragRef = useRef(null);
+
+  function toBoardPosition(event) {
+    const rect = boardRef.current.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * 100,
+      y: ((event.clientY - rect.top) / rect.height) * 100,
+    };
+  }
+
+  function handlePointerDown(event, item) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    dragRef.current = { id: item.id, type: item.type, pointerId: event.pointerId };
+    updateBoardItem(item.type, item.id, toBoardPosition(event));
+  }
+
+  function handlePointerMove(event) {
+    if (!dragRef.current) return;
+    updateBoardItem(dragRef.current.type, dragRef.current.id, toBoardPosition(event));
+  }
+
+  function handlePointerUp(event) {
+    if (dragRef.current?.pointerId === event.pointerId) {
+      dragRef.current = null;
+    }
+  }
+
+  const pieces = [...ownPlayers, ...opponents, ball];
+
+  return (
+    <div
+      className="futsal-board"
+      ref={boardRef}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+    >
+      <div className="court-line court-outline"></div>
+      <div className="court-line center-line"></div>
+      <div className="court-line center-circle"></div>
+      <div className="court-line left-area"></div>
+      <div className="court-line right-area"></div>
+      <div className="court-line left-goal"></div>
+      <div className="court-line right-goal"></div>
+      <div className="court-label court-label-left">自陣</div>
+      <div className="court-label court-label-right">相手陣</div>
+
+      {pieces.map((item) => (
+        <BoardPiece key={item.id} item={item} onPointerDown={handlePointerDown} />
+      ))}
+    </div>
+  );
+}
+
+function BoardPiece({ item, onPointerDown }) {
+  return (
+    <button
+      type="button"
+      className={`board-piece piece-${item.type}`}
+      style={{ left: `${item.x}%`, top: `${item.y}%` }}
+      onPointerDown={(event) => onPointerDown(event, item)}
+      aria-label={`${item.name}を移動`}
+    >
+      <span>{item.type === "ball" ? "⚽" : item.name}</span>
+    </button>
   );
 }
 
