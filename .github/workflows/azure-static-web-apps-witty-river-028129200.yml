@@ -31,15 +31,26 @@ jobs:
         with:
           node-version: '20.19.0'
           cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Use public npm registry
+        run: npm config set registry https://registry.npmjs.org/
 
       - name: Install dependencies
-        run: npm install --include=dev
+        run: npm ci
 
-      - name: Check Vite
-        run: npx vite --version
+      - name: Check installed packages
+        run: |
+          npm ls vite
+          npx --no-install vite --version
 
       - name: Build Vite app
         run: npm run build
+
+      - name: Verify build output
+        run: |
+          ls -la dist
+          test -f dist/index.html
 
       - name: Deploy to Azure Static Web Apps
         id: builddeploy
